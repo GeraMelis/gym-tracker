@@ -5,9 +5,15 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Space+Grotesk:wght@500;700;800&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js" defer></script>
+<script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js" defer></script>
+<script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js" defer></script>
+<script>
+window.firebaseReady=false;
+document.addEventListener('DOMContentLoaded',()=>{
+  setTimeout(()=>{window.firebaseReady=true;},1000);
+});
+</script>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 :root{--bg:#080c14;--sf:#0f1623;--card:#131c2e;--bd:#1a2640;--acc:#e8ff47;--blue:#4f9cf9;--pur:#9b6dff;--red:#ff4d6d;--grn:#2de08e;--org:#ff8c42;--tel:#2dd4bf;--pnk:#f472b6;--mut:#4a5878;--txt:#c8d8f0;--brt:#f0f6ff}
@@ -574,37 +580,46 @@ let modoModal='nueva',editRutinaId=null;
 function getRutinaActiva(){return rutinas.find(r=>r.id===rutinaActivaId)||null;}
 
 // ═══ FIREBASE CONFIGURATION ═══
-const firebaseConfig={
-  apiKey:"AIzaSyBJ_xHLBJCSUZf02a8Zue_Vf-0Zz2XMbiw",
-  authDomain:"gym-tracker-5df93.firebaseapp.com",
-  databaseURL:"https://gym-tracker-5df93-default-rtdb.firebaseio.com",
-  projectId:"gym-tracker-5df93",
-  storageBucket:"gym-tracker-5df93.firebasestorage.app",
-  messagingSenderId:"212909034 40",
-  appId:"1:212909034 40:web:da88dbb4028901c8f03515"
-};
-
-const app=firebase.initializeApp(firebaseConfig);
-const auth=firebase.getAuth(app);
-const db=firebase.getFirestore(app);
-
-let currentUser=null;
-let isSyncing=false;
-
-firebase.onAuthStateChanged(auth,async(user)=>{
-  if(user){
-    currentUser=user;
-    document.getElementById('auth-screen').style.display='none';
-    document.getElementById('user-badge').style.display='flex';
-    updateUserBadge(user);
-    loadState();
-    await syncFromFirestore();
-  } else {
-    currentUser=null;
-    document.getElementById('auth-screen').style.display='flex';
-    document.getElementById('user-badge').style.display='none';
+function initializeFirebase(){
+  if(!window.firebase){
+    setTimeout(initializeFirebase,100);
+    return;
   }
-});
+
+  const firebaseConfig={
+    apiKey:"AIzaSyBJ_xHLBJCSUZf02a8Zue_Vf-0Zz2XMbiw",
+    authDomain:"gym-tracker-5df93.firebaseapp.com",
+    databaseURL:"https://gym-tracker-5df93-default-rtdb.firebaseio.com",
+    projectId:"gym-tracker-5df93",
+    storageBucket:"gym-tracker-5df93.firebasestorage.app",
+    messagingSenderId:"212909034 40",
+    appId:"1:212909034 40:web:da88dbb4028901c8f03515"
+  };
+
+  const app=firebase.initializeApp(firebaseConfig);
+  const auth=firebase.getAuth(app);
+  const db=firebase.getFirestore(app);
+
+  window.currentUser=null;
+  window.isSyncing=false;
+  window.auth=auth;
+  window.db=db;
+
+  firebase.onAuthStateChanged(auth,async(user)=>{
+    if(user){
+      window.currentUser=user;
+      document.getElementById('auth-screen').style.display='none';
+      document.getElementById('user-badge').style.display='flex';
+      updateUserBadge(user);
+      loadState();
+      await syncFromFirestore();
+    } else {
+      window.currentUser=null;
+      document.getElementById('auth-screen').style.display='flex';
+      document.getElementById('user-badge').style.display='none';
+    }
+  });
+}
 
 function updateUserBadge(user){
   const name=user.displayName||'Usuario';
@@ -614,13 +629,14 @@ function updateUserBadge(user){
 }
 
 async function loginGoogle(){
+  if(!window.auth)return alert('Firebase aún no está listo');
   const googleProvider=new firebase.GoogleAuthProvider();
   const btn=document.getElementById('google-btn');
   const loading=document.getElementById('login-loading');
   btn.style.display='none';
   loading.style.display='block';
   try{
-    await firebase.signInWithPopup(auth,googleProvider);
+    await firebase.signInWithPopup(window.auth,googleProvider);
   } catch(error){
     console.error('Error al iniciar sesión:',error);
     alert('Error al iniciar sesión. Intenta de nuevo.');
@@ -631,7 +647,7 @@ async function loginGoogle(){
 
 async function logoutGoogle(){
   try{
-    await firebase.signOut(auth);
+    await firebase.signOut(window.auth);
     rutinas=[];sesiones=[];bodyData=[];rutinaActivaId=null;
     renderTabs();renderBody();
   } catch(error){
@@ -640,25 +656,25 @@ async function logoutGoogle(){
 }
 
 async function syncToFirestore(){
-  if(!currentUser||isSyncing)return;
-  isSyncing=true;
+  if(!window.currentUser||window.isSyncing)return;
+  window.isSyncing=true;
   document.getElementById('sync-badge').classList.add('show');
   try{
-    await firebase.setDoc(firebase.doc(db,'users',currentUser.uid),{
+    await firebase.setDoc(firebase.doc(window.db,'users',window.currentUser.uid),{
       rutinas,rutinaActivaId,sesiones,bodyData,objPeso,
       lastSync:new Date().toISOString()
     },{merge:true});
   } catch(error){
     console.error('Error sincronizando a Firestore:',error);
   }
-  isSyncing=false;
+  window.isSyncing=false;
   document.getElementById('sync-badge').classList.remove('show');
 }
 
 async function syncFromFirestore(){
-  if(!currentUser)return;
+  if(!window.currentUser)return;
   try{
-    const docSnap=await firebase.getDoc(firebase.doc(db,'users',currentUser.uid));
+    const docSnap=await firebase.getDoc(firebase.doc(window.db,'users',window.currentUser.uid));
     if(docSnap.exists()){
       const data=docSnap.data();
       if(data.rutinas)rutinas=data.rutinas;
@@ -672,6 +688,13 @@ async function syncFromFirestore(){
   } catch(error){
     console.error('Error sincronizando desde Firestore:',error);
   }
+}
+
+// Inicializar Firebase cuando el DOM esté listo
+if(document.readyState==='loading'){
+  document.addEventListener('DOMContentLoaded',initializeFirebase);
+} else {
+  initializeFirebase();
 }
 
 loadState();
