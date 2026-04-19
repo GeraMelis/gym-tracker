@@ -3,7 +3,6 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Space+Grotesk:wght@500;700;800&display=swap" rel="stylesheet">
 <script src="https://accounts.google.com/gsi/client" async defer></script>
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.0/firebase-app.js";
@@ -25,16 +24,17 @@ const auth = getAuth(app);
 const database = getDatabase(app);
 const provider = new GoogleAuthProvider();
 
-window.firebaseAuth = auth;
-window.firebaseDb = database;
-window.firebaseRef = ref;
-window.firebaseSet = set;
-window.firebaseGet = get;
-window.firebaseChild = child;
-window.firebaseSignOut = signOut;
-window.onAuthStateChanged = onAuthStateChanged;
-window.googleSignIn = () => signInWithPopup(auth, provider);
+window._fbAuth = auth;
+window._fbDb = database;
+window._fbRef = ref;
+window._fbSet = set;
+window._fbGet = get;
+window._fbChild = child;
+window._fbSignOut = () => signOut(auth);
+window._googleSignIn = () => signInWithPopup(auth, provider);
+window._onAuthStateChanged = (cb) => onAuthStateChanged(auth, cb);
 </script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Space+Grotesk:wght@500;700;800&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
@@ -216,17 +216,17 @@ tr:hover td{background:#ffffff04}
 
 <!-- LOGIN SCREEN -->
 <div id="login-screen" style="display:flex;align-items:center;justify-content:center;min-height:100vh;background:var(--bg);flex-direction:column;gap:24px">
-  <div style="background:var(--card);border:1px solid var(--bd);border-radius:14px;padding:40px;text-align:center;max-width:400px">
+  <div style="background:var(--card);border:1px solid var(--bd);border-radius:14px;padding:40px;text-align:center;max-width:380px;width:90%">
     <div style="font-size:48px;margin-bottom:16px">💪</div>
     <div style="font-family:'Space Grotesk',sans-serif;font-size:24px;font-weight:800;color:var(--brt);margin-bottom:8px">GYM TRACKER</div>
-    <div style="font-size:14px;color:var(--mut);margin-bottom:24px">Registrá tus entrenamientos y seguí tu progreso.</div>
-    <div id="google-signin"></div>
+    <div style="font-size:14px;color:var(--mut);margin-bottom:24px">Ingresá con tu cuenta de Google para acceder a tus datos desde cualquier dispositivo.</div>
+    <div id="google-signin-btn"></div>
+    <div id="login-loading" style="display:none;margin-top:16px;color:var(--mut);font-size:13px">Verificando sesión...</div>
   </div>
 </div>
 
-<!-- APP PRINCIPAL (oculta hasta loguearse) -->
-<div id="app-main" style="display:none">
-<body>
+<!-- APP PRINCIPAL -->
+<div id="app-wrapper" style="display:none">
 
 <!-- HEADER -->
 <div class="hdr">
@@ -240,12 +240,12 @@ tr:hover td{background:#ffffff04}
       <div class="pill" style="background:var(--acc)15;border-color:var(--acc)40"><div class="pill-l" style="color:var(--acc)">SQUAT MAX</div><div class="pill-v" style="color:var(--acc)" id="pill-squat">—</div></div>
       <div class="pill" style="background:var(--pur)15;border-color:var(--pur)40"><div class="pill-l" style="color:var(--pur)">DEADLIFT MAX</div><div class="pill-v" style="color:var(--pur)" id="pill-dead">—</div></div>
     </div>
-    <div style="display:flex;align-items:center;gap:12px">
-      <div style="text-align:right">
-        <div style="font-size:12px;font-weight:600;color:var(--brt)" id="user-name">Usuario</div>
-        <div style="font-size:10px;color:var(--mut)" id="user-email">email@example.com</div>
+    <div style="display:flex;align-items:center;gap:10px">
+      <div id="user-badge" style="display:none;align-items:center;gap:8px;background:var(--sf);border:1px solid var(--bd);border-radius:8px;padding:6px 12px">
+        <div id="user-avatar" style="width:28px;height:28px;border-radius:50%;background:var(--acc);color:#000;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:11px;flex-shrink:0">GE</div>
+        <div id="user-name-display" style="font-size:11px;font-weight:600;color:var(--brt)">Usuario</div>
+        <button onclick="doLogout()" style="background:none;border:none;color:var(--mut);cursor:pointer;font-size:12px;font-weight:600;padding:0 0 0 4px">✕</button>
       </div>
-      <button onclick="logout()" style="border:1px solid var(--bd);background:transparent;color:var(--txt);padding:6px 12px;border-radius:6px;font-size:12px;cursor:pointer;font-weight:600">Salir</button>
     </div>
   </div>
   <div class="tabs" id="tabs-bar"></div>
@@ -743,66 +743,132 @@ function iCuerpo(){const f=document.getElementById('c-f');if(f)f.value=new Date(
 
 renderTabs();renderBody();
 
+
 // ════════════════════════════════════════
-// GOOGLE SIGN-IN & FIREBASE AUTH
+// FIREBASE + GOOGLE SIGN-IN
 // ════════════════════════════════════════
 
 let currentUser = null;
 
-function initGoogleSignIn() {
-  google.accounts.id.initialize({
-    client_id: '618515494362-3mu8g7v494spc37s9vdum892l66jjsfd.apps.googleusercontent.com',
-    callback: handleSignIn
-  });
-  google.accounts.id.renderButton(
-    document.getElementById('google-signin'),
-    { theme: 'dark', size: 'large' }
-  );
+function initAuth() {
+  // Mostrar loading mientras verifica sesión
+  document.getElementById('login-loading').style.display = 'block';
+  
+  // Esperar a que Firebase esté listo
+  const waitForFirebase = setInterval(() => {
+    if (window._onAuthStateChanged) {
+      clearInterval(waitForFirebase);
+      
+      window._onAuthStateChanged(async (user) => {
+        document.getElementById('login-loading').style.display = 'none';
+        if (user) {
+          // Usuario ya logueado (sesión persistente)
+          currentUser = { email: user.email, name: user.displayName };
+          await loadFromFirebase();
+          showApp();
+        } else {
+          // No hay sesión — mostrar login
+          showLoginScreen();
+          initGoogleSignInBtn();
+        }
+      });
+    }
+  }, 100);
 }
 
-function handleSignIn() {
-  window.googleSignIn().then(result => {
+function initGoogleSignInBtn() {
+  if (window.google && window.google.accounts) {
+    google.accounts.id.initialize({
+      client_id: '618515494362-3mu8g7v494spc37s9vdum892l66jjsfd.apps.googleusercontent.com',
+      callback: () => {} // no usamos One Tap
+    });
+    google.accounts.id.renderButton(
+      document.getElementById('google-signin-btn'),
+      { theme: 'dark', size: 'large', text: 'signin_with' }
+    );
+  }
+  
+  // Botón de popup (fallback si One Tap falla)
+  const btn = document.getElementById('google-signin-btn');
+  if (btn && btn.children.length === 0) {
+    btn.innerHTML = '<button onclick="doGoogleLogin()" style="background:#4285f4;color:#fff;border:none;border-radius:8px;padding:12px 24px;font-size:14px;font-weight:600;cursor:pointer;width:100%">Iniciar sesión con Google</button>';
+  }
+  
+  // Siempre agregar botón popup como alternativa
+  setTimeout(() => {
+    const existing = document.getElementById('popup-login-btn');
+    if (!existing) {
+      const popupBtn = document.createElement('button');
+      popupBtn.id = 'popup-login-btn';
+      popupBtn.onclick = doGoogleLogin;
+      popupBtn.style.cssText = 'margin-top:12px;background:transparent;border:1px solid var(--bd);color:var(--txt);border-radius:8px;padding:10px 20px;font-size:13px;cursor:pointer;width:100%';
+      popupBtn.textContent = '→ Ingresar con Google';
+      document.getElementById('google-signin-btn').after(popupBtn);
+    }
+  }, 1000);
+}
+
+async function doGoogleLogin() {
+  try {
+    const result = await window._googleSignIn();
     currentUser = { email: result.user.email, name: result.user.displayName };
-    loadFromFirebase();
+    await loadFromFirebase();
     showApp();
-  }).catch(error => {
-    console.error('Error:', error);
-    alert('Error al loguearse');
-  });
+  } catch (e) {
+    console.error('Login error:', e);
+    alert('Error al iniciar sesión. Intentá de nuevo.');
+  }
 }
 
-function logout() {
-  window.firebaseSignOut(window.firebaseAuth).then(() => {
-    currentUser = null;
-    document.getElementById('app-main').style.display = 'none';
-    document.getElementById('login-screen').style.display = 'flex';
-    location.reload();
-  });
+async function doLogout() {
+  await window._fbSignOut();
+  currentUser = null;
+  rutinas = []; rutinaActivaId = null; sesiones = []; bodyData = []; objPeso = 75;
+  showLoginScreen();
+  initGoogleSignInBtn();
+}
+
+function showLoginScreen() {
+  document.getElementById('login-screen').style.display = 'flex';
+  document.getElementById('app-wrapper').style.display = 'none';
+  document.getElementById('user-badge').style.display = 'none';
 }
 
 function showApp() {
   document.getElementById('login-screen').style.display = 'none';
-  document.getElementById('app-main').style.display = 'block';
-  document.getElementById('user-name').textContent = currentUser.name || currentUser.email;
-  document.getElementById('user-email').textContent = currentUser.email;
+  document.getElementById('app-wrapper').style.display = 'block';
+  // Mostrar badge de usuario
+  const badge = document.getElementById('user-badge');
+  if (badge) {
+    badge.style.display = 'flex';
+    const initials = (currentUser.name || currentUser.email).split(' ').map(n=>n[0]).join('').substring(0,2).toUpperCase();
+    document.getElementById('user-avatar').textContent = initials;
+    document.getElementById('user-name-display').textContent = currentUser.name || currentUser.email;
+  }
   renderTabs();
   renderBody();
 }
 
+// ════════════════════════════════════════
+// FIREBASE SAVE/LOAD
+// ════════════════════════════════════════
+
 async function saveToFirebase() {
-  if (!currentUser) return;
+  if (!currentUser || !window._fbDb) return;
   try {
+    const key = currentUser.email.replace(/[.#$\[\]]/g, '_');
     const data = { rutinas, rutinaActivaId, sesiones, bodyData, objPeso, lastSaved: new Date().toISOString() };
-    await window.firebaseSet(window.firebaseRef(window.firebaseDb, `users/${currentUser.email}`), data);
+    await window._fbSet(window._fbRef(window._fbDb, `users/${key}`), data);
   } catch (e) {
     console.error('Firebase save error:', e);
   }
 }
 
 async function loadFromFirebase() {
-  if (!currentUser) return;
+  if (!currentUser || !window._fbDb) return;
   try {
-    const snapshot = await window.firebaseGet(window.firebaseChild(window.firebaseRef(window.firebaseDb), `users/${currentUser.email}`));
+    const key = currentUser.email.replace(/[.#$\[\]]/g, '_');
+    const snapshot = await window._fbGet(window._fbChild(window._fbRef(window._fbDb), `users/${key}`));
     if (snapshot.exists()) {
       const data = snapshot.val();
       rutinas = data.rutinas || [];
@@ -816,18 +882,39 @@ async function loadFromFirebase() {
   }
 }
 
-// Reemplazar saveToGrive con saveToFirebase
-const originalSaveToGrive = typeof saveToGrive !== 'undefined' ? saveToGrive : null;
-window.saveToGrive = saveToFirebase;
+// Interceptar todas las llamadas que guardaban datos y hacer que también guarden en Firebase
+const _origGuardarSesion = guardarSesion;
+guardarSesion = async function() {
+  _origGuardarSesion();
+  await saveToFirebase();
+};
+const _origSaveMed = saveMed;
+saveMed = async function() {
+  _origSaveMed();
+  await saveToFirebase();
+};
+const _origSaveRutina = saveRutina;
+saveRutina = async function() {
+  _origSaveRutina();
+  await saveToFirebase();
+};
+const _origActivarBorrador = activarBorrador;
+activarBorrador = async function(id) {
+  _origActivarBorrador(id);
+  await saveToFirebase();
+};
+const _origSaveEdit = saveEdit;
+saveEdit = async function() {
+  _origSaveEdit();
+  await saveToFirebase();
+};
 
-// Inicializar Google Sign-In
+// INIT
 window.addEventListener('load', () => {
-  setTimeout(() => {
-    initGoogleSignIn();
-    document.getElementById('login-screen').style.display = 'flex';
-  }, 500);
+  setTimeout(initAuth, 300);
 });
+
 </script>
-</div>
+</div><!-- /app-wrapper -->
 </body>
 </html>
