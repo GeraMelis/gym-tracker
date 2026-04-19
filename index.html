@@ -5,6 +5,9 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Space+Grotesk:wght@500;700;800&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js"></script>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 :root{--bg:#080c14;--sf:#0f1623;--card:#131c2e;--bd:#1a2640;--acc:#e8ff47;--blue:#4f9cf9;--pur:#9b6dff;--red:#ff4d6d;--grn:#2de08e;--org:#ff8c42;--tel:#2dd4bf;--pnk:#f472b6;--mut:#4a5878;--txt:#c8d8f0;--brt:#f0f6ff}
@@ -94,6 +97,28 @@ tr:hover td{background:#ffffff04}
 .rest-card{background:var(--sf);border:1px solid var(--bd);border-radius:14px;padding:32px 24px;text-align:center}
 .dia-pill{padding:6px 14px;border-radius:20px;border:1px solid;cursor:pointer;font-family:'Inter',sans-serif;font-size:12px;font-weight:600;transition:all .15s;background:transparent}
 .empty-state{text-align:center;padding:48px 0}
+
+/* ═══ PANTALLA DE LOGIN ═══ */
+#auth-screen{position:fixed;inset:0;background:var(--bg);z-index:100000;display:flex;align-items:center;justify-content:center;padding:20px}
+.login-card{background:var(--card);border:1px solid var(--bd);border-radius:20px;padding:40px;max-width:420px;text-align:center;box-shadow:0 20px 60px #00000040}
+.login-logo{font-family:'Space Grotesk',sans-serif;font-weight:800;font-size:40px;margin-bottom:8px}
+.login-title{color:var(--brt);font-size:24px;font-weight:800;margin-bottom:10px;font-family:'Space Grotesk',sans-serif}
+.login-desc{color:var(--mut);font-size:13px;margin-bottom:24px;line-height:1.5}
+.login-btn{width:100%;padding:12px 20px;border:none;border-radius:10px;font-size:14px;font-weight:700;cursor:pointer;transition:all .2s;background:var(--acc);color:#080c14}
+.login-btn:hover{transform:translateY(-2px);box-shadow:0 8px 24px var(--acc)40}
+.login-loading{color:var(--mut);font-size:12px;margin-top:12px}
+
+/* ═══ USER BADGE EN HEADER ═══ */
+.user-badge{display:flex;align-items:center;gap:8px;padding:6px 12px;border-radius:20px;background:var(--sf);border:1px solid var(--bd);font-size:12px;color:var(--txt)}
+.user-avatar{width:24px;height:24px;border-radius:50%;background:var(--acc);color:#080c14;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:11px}
+.user-logout{background:none;border:none;color:var(--mut);cursor:pointer;font-size:12px;margin-left:4px;transition:color .2s}
+.user-logout:hover{color:var(--acc)}
+
+/* ═══ SINCRONIZANDO BADGE ═══ */
+.sync-badge{position:fixed;bottom:100px;left:24px;background:var(--sf);border:1px solid var(--bd);border-radius:10px;padding:6px 12px;font-size:11px;color:var(--mut);z-index:89997;display:none;align-items:center;gap:6px}
+.sync-badge.show{display:flex}
+.sync-dot{width:6px;height:6px;border-radius:50%;background:var(--grn);animation:pulse 1s infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
 .ex-rut-row{display:flex;align-items:center;justify-content:space-between;padding:5px 8px;background:var(--sf);border-radius:6px;border:1px solid var(--bd);gap:8px;flex-wrap:wrap;margin-bottom:4px}
 
 /* ═══ CRONÓMETRO FLOTANTE ═══ */
@@ -190,6 +215,20 @@ tr:hover td{background:#ffffff04}
 </head>
 <body>
 
+<!-- PANTALLA DE LOGIN -->
+<div id="auth-screen">
+  <div class="login-card">
+    <div class="login-logo">💪</div>
+    <div class="login-title">GYM TRACKER</div>
+    <div class="login-desc">Sincroniza tus entrenamientos en todos tus dispositivos. Inicia sesión con tu cuenta de Google.</div>
+    <button class="login-btn" onclick="loginGoogle()" id="google-btn">🔐 Iniciar sesión con Google</button>
+    <div class="login-loading" id="login-loading" style="display:none">Autenticando...</div>
+  </div>
+</div>
+
+<!-- SYNC BADGE -->
+<div class="sync-badge" id="sync-badge"><div class="sync-dot"></div>Sincronizando...</div>
+
 <!-- HEADER -->
 <div class="hdr">
   <div class="hdr-top">
@@ -202,7 +241,14 @@ tr:hover td{background:#ffffff04}
       <div class="pill" style="background:var(--acc)15;border-color:var(--acc)40"><div class="pill-l" style="color:var(--acc)">SQUAT MAX</div><div class="pill-v" style="color:var(--acc)" id="pill-squat">—</div></div>
       <div class="pill" style="background:var(--pur)15;border-color:var(--pur)40"><div class="pill-l" style="color:var(--pur)">DEADLIFT MAX</div><div class="pill-v" style="color:var(--pur)" id="pill-dead">—</div></div>
     </div>
-    <button class="theme-toggle" id="theme-btn" onclick="toggleTheme()" title="Cambiar tema">🌙 Oscuro</button>
+    <div style="display:flex;gap:10px;align-items:center">
+      <button class="theme-toggle" id="theme-btn" onclick="toggleTheme()" title="Cambiar tema">🌙 Oscuro</button>
+      <div class="user-badge" id="user-badge" style="display:none">
+        <div class="user-avatar" id="user-avatar">?</div>
+        <div id="user-name">Usuario</div>
+        <button class="user-logout" onclick="logoutGoogle()" title="Cerrar sesión">✕</button>
+      </div>
+    </div>
   </div>
   <div class="tabs" id="tabs-bar"></div>
 </div>
@@ -513,7 +559,12 @@ function confB(){const man=document.getElementById('bman')?.value.trim();let ex=
 
 // ─── PERSISTENCIA localStorage ─────────────────────────────
 const LS_KEY='gymtracker_v1';
-function saveState(){try{localStorage.setItem(LS_KEY,JSON.stringify({rutinas,rutinaActivaId,sesiones,bodyData,objPeso}));}catch(e){}}
+function saveState(){
+  try{
+    localStorage.setItem(LS_KEY,JSON.stringify({rutinas,rutinaActivaId,sesiones,bodyData,objPeso}));
+    syncToFirestore();
+  } catch(e){}
+}
 function loadState(){try{const raw=localStorage.getItem(LS_KEY);if(!raw)return;const d=JSON.parse(raw);if(d.rutinas)rutinas=d.rutinas;if(d.rutinaActivaId!==undefined)rutinaActivaId=d.rutinaActivaId;if(d.sesiones)sesiones=d.sesiones;if(d.bodyData)bodyData=d.bodyData;if(d.objPeso!==undefined)objPeso=d.objPeso;}catch(e){}}
 
 let rutinas=[],rutinaActivaId=null,sesiones=[],bodyData=[],objPeso=75;
@@ -521,6 +572,107 @@ let selMusc='Pecho',selEx=null,recFilt='all',editIdx=null;
 let diasSel=new Set(['Lunes','Martes','Miércoles','Jueves','Viernes']);
 let modoModal='nueva',editRutinaId=null;
 function getRutinaActiva(){return rutinas.find(r=>r.id===rutinaActivaId)||null;}
+
+// ═══ FIREBASE CONFIGURATION ═══
+const firebaseConfig={
+  apiKey:"AIzaSyBJ_xHLBJCSUZf02a8Zue_Vf-0Zz2XMbiw",
+  authDomain:"gym-tracker-5df93.firebaseapp.com",
+  databaseURL:"https://gym-tracker-5df93-default-rtdb.firebaseio.com",
+  projectId:"gym-tracker-5df93",
+  storageBucket:"gym-tracker-5df93.firebasestorage.app",
+  messagingSenderId:"212909034 40",
+  appId:"1:212909034 40:web:da88dbb4028901c8f03515"
+};
+
+const app=firebase.initializeApp(firebaseConfig);
+const auth=firebase.getAuth(app);
+const db=firebase.getFirestore(app);
+
+let currentUser=null;
+let isSyncing=false;
+
+firebase.onAuthStateChanged(auth,async(user)=>{
+  if(user){
+    currentUser=user;
+    document.getElementById('auth-screen').style.display='none';
+    document.getElementById('user-badge').style.display='flex';
+    updateUserBadge(user);
+    loadState();
+    await syncFromFirestore();
+  } else {
+    currentUser=null;
+    document.getElementById('auth-screen').style.display='flex';
+    document.getElementById('user-badge').style.display='none';
+  }
+});
+
+function updateUserBadge(user){
+  const name=user.displayName||'Usuario';
+  const initial=name.charAt(0).toUpperCase();
+  document.getElementById('user-avatar').textContent=initial;
+  document.getElementById('user-name').textContent=name;
+}
+
+async function loginGoogle(){
+  const googleProvider=new firebase.GoogleAuthProvider();
+  const btn=document.getElementById('google-btn');
+  const loading=document.getElementById('login-loading');
+  btn.style.display='none';
+  loading.style.display='block';
+  try{
+    await firebase.signInWithPopup(auth,googleProvider);
+  } catch(error){
+    console.error('Error al iniciar sesión:',error);
+    alert('Error al iniciar sesión. Intenta de nuevo.');
+    btn.style.display='block';
+    loading.style.display='none';
+  }
+}
+
+async function logoutGoogle(){
+  try{
+    await firebase.signOut(auth);
+    rutinas=[];sesiones=[];bodyData=[];rutinaActivaId=null;
+    renderTabs();renderBody();
+  } catch(error){
+    console.error('Error al cerrar sesión:',error);
+  }
+}
+
+async function syncToFirestore(){
+  if(!currentUser||isSyncing)return;
+  isSyncing=true;
+  document.getElementById('sync-badge').classList.add('show');
+  try{
+    await firebase.setDoc(firebase.doc(db,'users',currentUser.uid),{
+      rutinas,rutinaActivaId,sesiones,bodyData,objPeso,
+      lastSync:new Date().toISOString()
+    },{merge:true});
+  } catch(error){
+    console.error('Error sincronizando a Firestore:',error);
+  }
+  isSyncing=false;
+  document.getElementById('sync-badge').classList.remove('show');
+}
+
+async function syncFromFirestore(){
+  if(!currentUser)return;
+  try{
+    const docSnap=await firebase.getDoc(firebase.doc(db,'users',currentUser.uid));
+    if(docSnap.exists()){
+      const data=docSnap.data();
+      if(data.rutinas)rutinas=data.rutinas;
+      if(data.rutinaActivaId!==undefined)rutinaActivaId=data.rutinaActivaId;
+      if(data.sesiones)sesiones=data.sesiones;
+      if(data.bodyData)bodyData=data.bodyData;
+      if(data.objPeso!==undefined)objPeso=data.objPeso;
+      saveState();
+      renderTabs();renderBody();
+    }
+  } catch(error){
+    console.error('Error sincronizando desde Firestore:',error);
+  }
+}
 
 loadState();
 
